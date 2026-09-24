@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>地上天気図 × ひまわり衛星 v2.3 (2026-09-24)</title>
+  <title>地上天気図 × ひまわり衛星 v2.4 (2026-09-24)</title>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -57,7 +57,7 @@
         <h1 class="text-sm font-bold tracking-wider text-slate-100">
           天気図 <span class="text-sky-400 text-xs font-normal">× ひまわり</span>
         </h1>
-        <span class="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">v2.3</span>
+        <span class="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">v2.4</span>
       </div>
     </div>
     
@@ -119,7 +119,7 @@
         </div>
       </div>
 
-      <!-- 位置 ＆ 縮尺微調整アコーディオン（広範囲コントロール） -->
+      <!-- 位置 ＆ 縮尺微調整アコーディオン -->
       <div class="border-t border-slate-800 pt-2">
         <details class="text-xs text-slate-400 group" open>
           <summary class="cursor-pointer flex items-center justify-between hover:text-slate-200 select-none font-medium">
@@ -130,31 +130,31 @@
             <span class="text-[10px] text-slate-500 group-open:rotate-180 transition">▼</span>
           </summary>
           <div class="mt-2 space-y-2.5 bg-slate-950/70 p-2.5 rounded-lg border border-slate-800">
-            <!-- 縮尺（スケール）調整 -->
+            <!-- 縮尺調整 -->
             <div>
               <div class="flex justify-between text-[11px] mb-1">
                 <span class="text-slate-300">縮尺（拡大・縮小）</span>
                 <span id="val-scale" class="font-mono text-sky-400">100%</span>
               </div>
-              <input id="slider-scale" type="range" min="50" max="180" value="100" class="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer">
+              <input id="slider-scale" type="range" min="50" max="250" value="100" class="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer">
             </div>
 
-            <!-- 東西シフト（±2000km） -->
+            <!-- 東西シフト -->
             <div>
               <div class="flex justify-between text-[11px] mb-1">
                 <span class="text-slate-300">東西（左右シフト）</span>
-                <span id="val-offset-x" class="font-mono text-sky-400">0 km</span>
+                <span id="val-offset-x" class="font-mono text-sky-400">0</span>
               </div>
-              <input id="slider-offset-x" type="range" min="-200" max="200" value="0" class="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer">
+              <input id="slider-offset-x" type="range" min="-300" max="300" value="0" class="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer">
             </div>
 
-            <!-- 南北シフト（±2000km） -->
+            <!-- 南北シフト -->
             <div>
               <div class="flex justify-between text-[11px] mb-1">
                 <span class="text-slate-300">南北（上下シフト）</span>
-                <span id="val-offset-y" class="font-mono text-sky-400">0 km</span>
+                <span id="val-offset-y" class="font-mono text-sky-400">0</span>
               </div>
-              <input id="slider-offset-y" type="range" min="-200" max="200" value="0" class="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer">
+              <input id="slider-offset-y" type="range" min="-300" max="300" value="0" class="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer">
             </div>
 
             <button onclick="resetAdjustment()" class="w-full py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded border border-slate-700 transition">
@@ -192,28 +192,30 @@
     let cachedJmaData = null;
     let rawWeatherImg = null;
 
-    // 手動補正パラメータ
+    // 手動補正パラメータ（投影幾何側へ適用）
     let userScale = 1.0;
-    let userOffsetX = 0; // 経度オフセット
-    let userOffsetY = 0; // 緯度オフセット
+    let userOffsetX = 0;
+    let userOffsetY = 0;
 
-    // 基本領域定義
+    // 基本領域定義（固定）
     const BASE_BOUNDS = {
       near: { latMin: 20.0, latMax: 50.0, lonMin: 118.0, lonMax: 154.0 },
       asia: { latMin: 0.0,  latMax: 65.0, lonMin: 80.0,  lonMax: 175.0 }
     };
 
-    // ポーラーステレオ投影のパラメータ（中心経度140E、標準緯度60N）
+    // ポーラーステレオ投影の初期パラメータ
+    // u0, v0: 北極点の正規化座標（srcW基準）
+    // scale: phi0=60Nでの基準半径に対するピクセルスケール比率
     const PROJ_PARAMS = {
       near: {
         u0: 0.50,
-        v0: -1.05,
-        scale: 1.60
+        v0: -1.45,
+        scale: 1.95
       },
       asia: {
-        u0: 0.58,   // 左上の凡例枠を除外するため中心を右にシフト
-        v0: -0.55,
-        scale: 0.95
+        u0: 0.50,
+        v0: -0.65,
+        scale: 1.10
       }
     };
 
@@ -345,21 +347,15 @@
       }
     }
 
-    // 高解像度Canvas幾何補正エンジン (1920px解像度)
+    // 高解像度Canvas幾何補正エンジン (正角性維持・固定boundsサンプリング)
     function renderLayer() {
       if (!rawWeatherImg) return;
 
       const base = BASE_BOUNDS[currentArea];
       
-      // 手動補正（縮尺・位置）を反映した描画境界
-      const centerLat = (base.latMin + base.latMax) / 2 + userOffsetY;
-      const centerLon = (base.lonMin + base.lonMax) / 2 + userOffsetX;
-      const spanLat = (base.latMax - base.latMin) * (1 / userScale);
-      const spanLon = (base.lonMax - base.lonMin) * (1 / userScale);
-
       const bounds = [
-        [centerLat - spanLat / 2, centerLon - spanLon / 2],
-        [centerLat + spanLat / 2, centerLon + spanLon / 2]
+        [base.latMin, base.lonMin],
+        [base.latMax, base.lonMax]
       ];
 
       if (!isRectifyEnabled) {
@@ -367,9 +363,10 @@
         return;
       }
 
-      // 高解像度Canvas生成（1920px）
       const canvas = document.createElement('canvas');
       const dstW = 1920;
+      const spanLat = base.latMax - base.latMin;
+      const spanLon = base.lonMax - base.lonMin;
       const dstH = Math.round(dstW * (spanLat / spanLon) * 1.25);
       canvas.width = dstW;
       canvas.height = dstH;
@@ -399,6 +396,14 @@
       const srcH = srcCanvas.height;
       const params = PROJ_PARAMS[currentArea];
 
+      // 手動補正パラメータを幾何モデルに反映
+      const effectiveScale = params.scale * userScale;
+      const effectiveU0 = params.u0 + userOffsetX;
+      const effectiveV0 = params.v0 + userOffsetY;
+      
+      // X・Y共通のピクセルスケール（南北潰れの防止）
+      const K = srcW * effectiveScale;
+
       const phi0 = 60 * Math.PI / 180;
       const lam0 = 140 * Math.PI / 180;
 
@@ -423,8 +428,8 @@
           const xps = r * Math.sin(dLam);
           const yps = r * Math.cos(dLam);
 
-          const u = Math.round(srcW * params.u0 + srcW * params.scale * xps);
-          const v = Math.round(srcH * params.v0 + srcH * params.scale * yps);
+          const u = Math.round(srcW * effectiveU0 + K * xps);
+          const v = Math.round(srcW * effectiveV0 + K * yps);
 
           if (u >= 0 && u < srcW && v >= 0 && v < srcH) {
             dstPixels[y * dstW + x] = srcPixels[v * srcW + u];
@@ -492,7 +497,6 @@
     }
 
     function setupSliders() {
-      // 不透明度
       const sliderOpacity = document.getElementById('opacity-slider');
       sliderOpacity.addEventListener('input', (e) => {
         currentOpacity = e.target.value / 100;
@@ -502,7 +506,6 @@
         }
       });
 
-      // 縮尺スライダー
       const sliderScale = document.getElementById('slider-scale');
       sliderScale.addEventListener('input', (e) => {
         userScale = parseInt(e.target.value, 10) / 100;
@@ -510,21 +513,19 @@
         renderLayer();
       });
 
-      // 東西シフト（1ステップ = 約10km、最大±2000km）
       const sliderX = document.getElementById('slider-offset-x');
       sliderX.addEventListener('input', (e) => {
         const val = parseInt(e.target.value, 10);
-        userOffsetX = val * 0.1; // 経度換算
-        document.getElementById('val-offset-x').textContent = `${val > 0 ? '+' : ''}${val * 10} km`;
+        userOffsetX = val * 0.001;
+        document.getElementById('val-offset-x').textContent = `${val > 0 ? '+' : ''}${val}`;
         renderLayer();
       });
 
-      // 南北シフト（1ステップ = 約10km、最大±2000km）
       const sliderY = document.getElementById('slider-offset-y');
       sliderY.addEventListener('input', (e) => {
         const val = parseInt(e.target.value, 10);
-        userOffsetY = val * 0.1; // 緯度換算
-        document.getElementById('val-offset-y').textContent = `${val > 0 ? '+' : ''}${val * 10} km`;
+        userOffsetY = val * 0.001;
+        document.getElementById('val-offset-y').textContent = `${val > 0 ? '+' : ''}${val}`;
         renderLayer();
       });
     }
@@ -537,8 +538,8 @@
       document.getElementById('slider-offset-x').value = 0;
       document.getElementById('slider-offset-y').value = 0;
       document.getElementById('val-scale').textContent = '100%';
-      document.getElementById('val-offset-x').textContent = '0 km';
-      document.getElementById('val-offset-y').textContent = '0 km';
+      document.getElementById('val-offset-x').textContent = '0';
+      document.getElementById('val-offset-y').textContent = '0';
       renderLayer();
     }
 
