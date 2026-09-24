@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>地上天気図 × ひまわり衛星 v2.4 (2026-09-24)</title>
+  <title>地上天気図 × ひまわり衛星 v2.5 (2026-09-24)</title>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -57,7 +57,7 @@
         <h1 class="text-sm font-bold tracking-wider text-slate-100">
           天気図 <span class="text-sky-400 text-xs font-normal">× ひまわり</span>
         </h1>
-        <span class="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">v2.4</span>
+        <span class="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">v2.5</span>
       </div>
     </div>
     
@@ -136,7 +136,7 @@
                 <span class="text-slate-300">縮尺（拡大・縮小）</span>
                 <span id="val-scale" class="font-mono text-sky-400">100%</span>
               </div>
-              <input id="slider-scale" type="range" min="50" max="250" value="100" class="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer">
+              <input id="slider-scale" type="range" min="50" max="200" value="100" class="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer">
             </div>
 
             <!-- 東西シフト -->
@@ -192,31 +192,30 @@
     let cachedJmaData = null;
     let rawWeatherImg = null;
 
-    // 手動補正パラメータ（投影幾何側へ適用）
+    // 手動補正パラメータ
     let userScale = 1.0;
     let userOffsetX = 0;
     let userOffsetY = 0;
 
-    // 基本領域定義（固定）
+    // 基本領域定義
     const BASE_BOUNDS = {
       near: { latMin: 20.0, latMax: 50.0, lonMin: 118.0, lonMax: 154.0 },
       asia: { latMin: 0.0,  latMax: 65.0, lonMin: 80.0,  lonMax: 175.0 }
     };
 
-        const PROJ_PARAMS = {
+    // 日本付近（北緯35度・東経140度）をアンカー基準とする幾何パラメータ
+    const PROJ_PARAMS = {
       near: {
-        u0: 0.50,
-        v0: -0.61,
-        scale: 1.00
+        uCenter: 0.50,    // 日本（35N, 140E）の画像横位置比率
+        vCenter: 0.38,    // 日本（35N, 140E）の画像縦位置比率 (srcW基準)
+        scale: 1.00       // 基準ピクセルスケール
       },
       asia: {
-        u0: 0.56,
-        v0: -0.15,
-        scale: 0.46
+        uCenter: 0.56,    // 凡例枠を考慮した東経140度線の横位置比率
+        vCenter: 0.40,    // 北緯35度の縦位置比率 (srcW基準)
+        scale: 0.48       // 基準ピクセルスケール
       }
     };
-
-    
 
     window.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
@@ -346,7 +345,7 @@
       }
     }
 
-    // 高解像度Canvas幾何補正エンジン (正角性維持・固定boundsサンプリング)
+    // 高解像度Canvas幾何補正エンジン (日本中心アンカー基準)
     function renderLayer() {
       if (!rawWeatherImg) return;
 
@@ -395,16 +394,15 @@
       const srcH = srcCanvas.height;
       const params = PROJ_PARAMS[currentArea];
 
-      // 手動補正パラメータを幾何モデルに反映
-      const effectiveScale = params.scale * userScale;
-      const effectiveU0 = params.u0 + userOffsetX;
-      const effectiveV0 = params.v0 + userOffsetY;
-      
-      // X・Y共通のピクセルスケール（南北潰れの防止）
-      const K = srcW * effectiveScale;
-
       const phi0 = 60 * Math.PI / 180;
       const lam0 = 140 * Math.PI / 180;
+
+      // 日本付近（北緯35度・東経140度）の基準動径（アンカー点）
+      const phiC = 35 * Math.PI / 180;
+      const rCenter = ((1 + Math.sin(phi0)) / (1 + Math.sin(phiC))) * Math.cos(phiC);
+
+      // 共通スケール
+      const K = srcW * params.scale;
 
       const latMin = bounds[0][0];
       const latMax = bounds[1][0];
@@ -427,8 +425,13 @@
           const xps = r * Math.sin(dLam);
           const yps = r * Math.cos(dLam);
 
-          const u = Math.round(srcW * effectiveU0 + K * xps);
-          const v = Math.round(srcW * effectiveV0 + K * yps);
+          // 日本（北緯35度・東経140度）からの相対距離
+          const dx = xps;
+          const dy = yps - rCenter;
+
+          // 日本を中心に拡大・縮小、直感的なシフト移動
+          const u = Math.round(srcW * params.uCenter + (K * dx) / userScale - userOffsetX * srcW);
+          const v = Math.round(srcW * params.vCenter + (K * dy) / userScale - userOffsetY * srcW);
 
           if (u >= 0 && u < srcW && v >= 0 && v < srcH) {
             dstPixels[y * dstW + x] = srcPixels[v * srcW + u];
