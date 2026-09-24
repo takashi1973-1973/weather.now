@@ -203,21 +203,20 @@
       asia: { latMin: 0.0,  latMax: 65.0, lonMin: 80.0,  lonMax: 175.0 }
     };
 
-    // ポーラーステレオ投影の初期パラメータ
-    // u0, v0: 北極点の正規化座標（srcW基準）
-    // scale: phi0=60Nでの基準半径に対するピクセルスケール比率
-    const PROJ_PARAMS = {
+        const PROJ_PARAMS = {
       near: {
         u0: 0.50,
-        v0: -1.45,
-        scale: 1.95
+        v0: -0.61,
+        scale: 1.00
       },
       asia: {
-        u0: 0.50,
-        v0: -0.65,
-        scale: 1.10
+        u0: 0.56,
+        v0: -0.15,
+        scale: 0.46
       }
     };
+
+    
 
     window.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
