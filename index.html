@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>専門地上天気図 × ひまわり衛星オーバーレイ</title>
+  <title>地上天気図 × ひまわり衛星 v2.0 (2026-09-23)</title>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -27,9 +27,8 @@
     #map {
       height: 100%;
       width: 100%;
-      background-color: #030712;
+      background-color: #111827;
     }
-    /* 乗算ブレンド：天気図用紙の白地を完全透過 */
     .blend-multiply {
       mix-blend-mode: multiply !important;
       filter: contrast(135%) brightness(95%);
@@ -54,9 +53,12 @@
   <header class="h-12 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-3 z-20 shrink-0">
     <div class="flex items-center space-x-2">
       <i data-lucide="layers" class="w-5 h-5 text-sky-400"></i>
-      <h1 class="text-sm font-bold tracking-wider text-slate-100 flex items-center gap-1.5">
-        地上天気図 <span class="text-sky-400 text-xs font-normal">× ひまわり衛星</span>
-      </h1>
+      <div class="flex items-baseline gap-1.5">
+        <h1 class="text-sm font-bold tracking-wider text-slate-100">
+          天気図 <span class="text-sky-400 text-xs font-normal">× ひまわり</span>
+        </h1>
+        <span class="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">v2.0 (2026.09.23)</span>
+      </div>
     </div>
     
     <div class="flex items-center space-x-2 text-xs">
@@ -74,9 +76,29 @@
     <div id="map"></div>
 
     <!-- コントロールパネル -->
-    <div class="absolute bottom-4 left-3 right-3 sm:left-auto sm:right-4 sm:w-80 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl p-3 z-[1000] shadow-2xl flex flex-col gap-3">
+    <div class="absolute bottom-4 left-3 right-3 sm:left-auto sm:right-4 sm:w-84 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl p-3 z-[1000] shadow-2xl flex flex-col gap-2.5">
       
-      <!-- 天気図の不透明度スライダー -->
+      <!-- 天気図種別切り替え (実況 ⇄ 専門) -->
+      <div>
+        <label class="text-[11px] text-slate-400 block mb-1">天気図種別</label>
+        <div class="flex bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+          <button id="btn-mode-live" onclick="setChartTypeMode('live')" class="flex-1 py-1 rounded text-center text-xs font-medium bg-sky-500 text-slate-950 transition">実況天気図</button>
+          <button id="btn-mode-expert" onclick="setChartTypeMode('expert')" class="flex-1 py-1 rounded text-center text-xs font-medium text-slate-400 hover:text-slate-200 transition">専門天気図</button>
+        </div>
+      </div>
+
+      <!-- 専門天気図選択プルダウン -->
+      <div id="expert-select-container" class="hidden">
+        <label class="text-[11px] text-slate-400 block mb-1">専門天気図の種類</label>
+        <select id="expert-chart-select" onchange="onExpertChartChange()" class="w-full bg-slate-800 border border-slate-700 text-xs text-sky-300 rounded-lg p-1.5 focus:outline-none focus:border-sky-500">
+          <option value="AXFE578">極東地上・500hPa高度渦度図 (AXFE578)</option>
+          <option value="ASAS">アジア太平洋地上実況図 (ASAS)</option>
+          <option value="FSAS24">極東地上・降水量24h予想図 (FSAS24)</option>
+          <option value="AUPN50">アジア500hPa高度気温図 (AUPN50)</option>
+        </select>
+      </div>
+
+      <!-- 不透明度スライダー -->
       <div>
         <div class="flex justify-between items-center text-xs font-semibold mb-1">
           <span class="text-slate-300 flex items-center gap-1">
@@ -87,14 +109,7 @@
         </div>
         <input id="opacity-slider" type="range" min="0" max="100" value="85" 
                class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400">
-        <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
-          <span>0% (衛星のみ)</span>
-          <span>50% (半透明)</span>
-          <span>100% (天気図のみ)</span>
-        </div>
       </div>
-
-      <div class="h-px bg-slate-800"></div>
 
       <!-- 合成方式 & 領域切り替え -->
       <div class="grid grid-cols-2 gap-2 text-xs">
@@ -115,11 +130,25 @@
         </div>
       </div>
 
-      <!-- 衛星画像表示切替 & 視点リセット -->
+      <!-- 衛星画像設定：赤外 ⇄ カラー切り替え -->
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label class="text-[11px] text-slate-400">ひまわり衛星画像</label>
+          <button onclick="toggleSatelliteVisibility()" id="btn-sat-eye" class="text-[10px] text-sky-400 hover:underline">
+            表示中 (タップで非表示)
+          </button>
+        </div>
+        <div class="flex bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
+          <button id="btn-sat-ir" onclick="switchSatelliteBand('ir')" class="flex-1 py-1 rounded text-center font-medium bg-sky-500 text-slate-950 transition">赤外 (夜間OK)</button>
+          <button id="btn-sat-color" onclick="switchSatelliteBand('color')" class="flex-1 py-1 rounded text-center font-medium text-slate-400 hover:text-slate-200 transition">トゥルーカラー</button>
+        </div>
+      </div>
+
+      <!-- 下部トグルボタン -->
       <div class="flex items-center justify-between pt-1 text-xs">
-        <button id="btn-sat-toggle" onclick="toggleSatellite()" class="py-1 px-2.5 rounded-lg font-medium bg-slate-800 border border-slate-700 text-sky-400 hover:bg-slate-750 transition flex items-center gap-1.5">
-          <i data-lucide="cloud" class="w-3.5 h-3.5"></i>
-          <span id="sat-status-text">ひまわり赤外 ON</span>
+        <button id="btn-rectify-toggle" onclick="toggleRectify()" class="py-1 px-2 rounded font-medium bg-slate-800 border border-slate-700 text-sky-400 hover:bg-slate-750 transition flex items-center gap-1">
+          <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+          <span id="rectify-status-text">幾何補正: ON</span>
         </button>
 
         <button onclick="resetMapView()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition">
@@ -134,15 +163,34 @@
     let map;
     let weatherOverlay = null;
     let himawariLayer = null;
-    let currentArea = 'near'; // 'near' or 'asia'
+    let currentArea = 'near';       // 'near' or 'asia'
+    let currentChartMode = 'live';  // 'live' or 'expert'
+    let currentSatBand = 'ir';      // 'ir' (赤外: B13/TBB) or 'color' (カラー: REP/ETC)
+    let isSatelliteVisible = true;
     let currentBlendMode = 'multiply';
     let currentOpacity = 0.85;
-    let isSatelliteVisible = true;
+    let isRectifyEnabled = true;
     let cachedJmaData = null;
+    let rawWeatherImg = null;
 
-    const BOUNDS_MAP = {
-      near: [[19.5, 117.0], [52.5, 156.5]], // 日本周辺実況図
-      asia: [[2.0, 85.0], [60.0, 175.0]]    // アジア太平洋地上実況図 (ASAS)
+    // 表示境界 (Webメルカトル展開用)
+    const MERCATOR_BOUNDS = {
+      near: { latMin: 20.0, latMax: 50.0, lonMin: 118.0, lonMax: 154.0 },
+      asia: { latMin: 5.0,  latMax: 60.0, lonMin: 85.0,  lonMax: 175.0 }
+    };
+
+    // 気象庁ポーラーステレオ投影パラメータ (phi0=60N, lam0=140E)
+    const PROJ_PARAMS = {
+      near: { u0: 0.50, v0: -0.65, scale: 1.48 },
+      asia: { u0: 0.52, v0: -0.42, scale: 1.25 }
+    };
+
+    // 専門天気図URL定義
+    const EXPERT_URLS = {
+      AXFE578: "https://www.data.jma.go.jp/fcd/yoho/data/wxchart/expert/AXFE578.png",
+      ASAS: "https://www.data.jma.go.jp/fcd/yoho/data/wxchart/expert/ASAS.png",
+      FSAS24: "https://www.data.jma.go.jp/fcd/yoho/data/wxchart/expert/FSAS24.png",
+      AUPN50: "https://www.data.jma.go.jp/fcd/yoho/data/wxchart/expert/AUPN50.png"
     };
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -160,9 +208,9 @@
         maxZoom: 8
       }).setView([36.0, 137.5], 5);
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19
+      // 海岸線ベースマップ（Esri Dark Gray：APIキー不要）
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 16
       }).addTo(map);
 
       L.control.zoom({ position: 'topleft' }).addTo(map);
@@ -171,9 +219,10 @@
     async function loadAllData() {
       document.getElementById('chart-time').textContent = '更新中...';
       await Promise.all([updateSatelliteLayer(), fetchWeatherChartList()]);
-      renderWeatherOverlay();
+      processWeatherChart();
     }
 
+    // ひまわり衛星画像の更新（赤外 B13/TBB または トゥルーカラー REP/ETC）
     async function updateSatelliteLayer() {
       const mode = currentArea === 'near' ? 'jp' : 'fd';
       const targetTimeUrl = `https://www.jma.go.jp/bosai/himawari/data/satimg/targetTimes_${mode}.json`;
@@ -190,10 +239,13 @@
             map.removeLayer(himawariLayer);
           }
 
+          // バンドパスの切り替え (赤外 or トゥルーカラー)
+          const bandPath = currentSatBand === 'ir' ? 'B13/TBB' : 'REP/ETC';
+
           himawariLayer = L.tileLayer(
-            `https://www.jma.go.jp/bosai/himawari/data/satimg/${basetime}/${mode}/${validtime}/B13/TBB/{z}/{x}/{y}.jpg`,
+            `https://www.jma.go.jp/bosai/himawari/data/satimg/${basetime}/${mode}/${validtime}/${bandPath}/{z}/{x}/{y}.jpg`,
             {
-              opacity: 0.8,
+              opacity: 0.85,
               zIndex: 10,
               maxNativeZoom: mode === 'near' ? 6 : 5,
               maxZoom: 8
@@ -205,57 +257,232 @@
           }
         }
       } catch (err) {
-        console.warn('ひまわり衛星データ取得エラー:', err);
+        console.warn('衛星データ取得失敗:', err);
       }
     }
 
+    // 衛星バンド切り替え（赤外 ⇄ カラー）
+    async function switchSatelliteBand(band) {
+      if (currentSatBand === band) return;
+      currentSatBand = band;
+
+      const btnIr = document.getElementById('btn-sat-ir');
+      const btnColor = document.getElementById('btn-sat-color');
+
+      if (band === 'ir') {
+        btnIr.className = 'flex-1 py-1 rounded text-center font-medium bg-sky-500 text-slate-950 transition';
+        btnColor.className = 'flex-1 py-1 rounded text-center font-medium text-slate-400 hover:text-slate-200 transition';
+      } else {
+        btnColor.className = 'flex-1 py-1 rounded text-center font-medium bg-sky-500 text-slate-950 transition';
+        btnIr.className = 'flex-1 py-1 rounded text-center font-medium text-slate-400 hover:text-slate-200 transition';
+      }
+
+      await updateSatelliteLayer();
+    }
+
+    // 衛星レイヤーの表示/非表示切り替え
+    function toggleSatelliteVisibility() {
+      isSatelliteVisible = !isSatelliteVisible;
+      const btnEye = document.getElementById('btn-sat-eye');
+      if (isSatelliteVisible) {
+        btnEye.textContent = '表示中 (タップで非表示)';
+        if (himawariLayer && !map.hasLayer(himawariLayer)) {
+          map.addLayer(himawariLayer);
+        }
+      } else {
+        btnEye.textContent = '非表示中 (タップで表示)';
+        if (himawariLayer && map.hasLayer(himawariLayer)) {
+          map.removeLayer(himawariLayer);
+        }
+      }
+    }
+
+    // 実況リスト取得
     async function fetchWeatherChartList() {
       try {
         const jmaRes = await fetch('https://www.jma.go.jp/bosai/weather_map/data/list.json');
         cachedJmaData = await jmaRes.json();
       } catch (err) {
-        console.error('天気図リスト取得エラー:', err);
-        document.getElementById('chart-time').textContent = '取得待機中';
+        console.error('天気図リスト取得失敗:', err);
       }
     }
 
-    function renderWeatherOverlay() {
-      if (!cachedJmaData) return;
+    // 天気図画像のロード
+    function processWeatherChart() {
+      let imageUrl = '';
 
-      const areaKey = currentArea;
-      const areaGroup = cachedJmaData[areaKey];
-
-      if (areaGroup && areaGroup.now && areaGroup.now.length > 0) {
-        const fileName = areaGroup.now[areaGroup.now.length - 1];
-        const imageUrl = `https://www.jma.go.jp/bosai/weather_map/data/png/${fileName}`;
-
-        try {
-          const match = fileName.match(/(\d{4})(\d{2})(\d{2})(\d{2})\d{4}/);
-          if (match) {
-            const m = match[2];
-            const d = match[3];
-            const utcHour = parseInt(match[4], 10);
-            const jstHour = (utcHour + 9) % 24;
-            const regionName = currentArea === 'near' ? '日本' : 'アジア';
-            document.getElementById('chart-time').textContent = `${regionName} ${m}/${d} ${String(jstHour).padStart(2, '0')}:00 JST`;
-          } else {
+      if (currentChartMode === 'live') {
+        if (!cachedJmaData) return;
+        const areaGroup = cachedJmaData[currentArea];
+        if (areaGroup && areaGroup.now && areaGroup.now.length > 0) {
+          const fileName = areaGroup.now[areaGroup.now.length - 1];
+          imageUrl = `https://www.jma.go.jp/bosai/weather_map/data/png/${fileName}`;
+          
+          try {
+            const match = fileName.match(/(\d{4})(\d{2})(\d{2})(\d{2})\d{4}/);
+            if (match) {
+              const m = match[2];
+              const d = match[3];
+              const utcHour = parseInt(match[4], 10);
+              const jstHour = (utcHour + 9) % 24;
+              const reg = currentArea === 'near' ? '日本' : 'アジア';
+              document.getElementById('chart-time').textContent = `${reg} ${m}/${d} ${String(jstHour).padStart(2, '0')}:00`;
+            }
+          } catch(e) {
             document.getElementById('chart-time').textContent = '最新実況';
           }
-        } catch (e) {
-          document.getElementById('chart-time').textContent = '最新実況';
         }
+      } else {
+        const expertKey = document.getElementById('expert-chart-select').value;
+        imageUrl = `${EXPERT_URLS[expertKey]}?_t=${Date.now()}`;
+        document.getElementById('chart-time').textContent = `専門: ${expertKey}`;
+      }
+
+      if (!imageUrl) return;
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        rawWeatherImg = img;
+        renderLayer();
+      };
+      img.onerror = () => {
+        fallbackRender(imageUrl);
+      };
+      img.src = imageUrl;
+    }
+
+    // Canvasによる幾何補正（プランB：再投影）
+    function renderLayer() {
+      if (!rawWeatherImg) return;
+
+      const boundsConfig = MERCATOR_BOUNDS[currentArea];
+      const bounds = [
+        [boundsConfig.latMin, boundsConfig.lonMin],
+        [boundsConfig.latMax, boundsConfig.lonMax]
+      ];
+
+      if (!isRectifyEnabled) {
+        fallbackRender(rawWeatherImg.src);
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      const dstW = 960;
+      const dstH = Math.round(dstW * ((boundsConfig.latMax - boundsConfig.latMin) / (boundsConfig.lonMax - boundsConfig.lonMin)) * 1.25);
+      canvas.width = dstW;
+      canvas.height = dstH;
+
+      const ctx = canvas.getContext('2d');
+
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = rawWeatherImg.width;
+      srcCanvas.height = rawWeatherImg.height;
+      const srcCtx = srcCanvas.getContext('2d');
+      srcCtx.drawImage(rawWeatherImg, 0, 0);
+
+      let srcPixels, dstPixels, dstData;
+      try {
+        const srcData = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
+        srcPixels = new Uint32Array(srcData.data.buffer);
+        dstData = ctx.createImageData(dstW, dstH);
+        dstPixels = new Uint32Array(dstData.data.buffer);
+      } catch (e) {
+        fallbackRender(rawWeatherImg.src);
+        return;
+      }
+
+      const srcW = srcCanvas.width;
+      const srcH = srcCanvas.height;
+      const params = PROJ_PARAMS[currentArea];
+
+      const phi0 = 60 * Math.PI / 180;
+      const lam0 = 140 * Math.PI / 180;
+
+      const qMin = Math.log(Math.tan(Math.PI / 4 + (boundsConfig.latMin * Math.PI / 180) / 2));
+      const qMax = Math.log(Math.tan(Math.PI / 4 + (boundsConfig.latMax * Math.PI / 180) / 2));
+
+      for (let y = 0; y < dstH; y++) {
+        const q = qMax - (y / dstH) * (qMax - qMin);
+        const phi = 2 * Math.atan(Math.exp(q)) - Math.PI / 2;
+        const r = ((1 + Math.sin(phi0)) / (1 + Math.sin(phi))) * Math.cos(phi);
+
+        for (let x = 0; x < dstW; x++) {
+          const lonDeg = boundsConfig.lonMin + (x / dstW) * (boundsConfig.lonMax - boundsConfig.lonMin);
+          const lam = lonDeg * Math.PI / 180;
+          const dLam = lam - lam0;
+
+          const xps = r * Math.sin(dLam);
+          const yps = -r * Math.cos(dLam);
+
+          const u = Math.round(srcW * params.u0 + (srcW * params.scale * xps));
+          const v = Math.round(srcH * -params.v0 - (srcH * params.scale * yps));
+
+          if (u >= 0 && u < srcW && v >= 0 && v < srcH) {
+            dstPixels[y * dstW + x] = srcPixels[v * srcW + u];
+          } else {
+            dstPixels[y * dstW + x] = 0;
+          }
+        }
+      }
+
+      ctx.putImageData(dstData, 0, 0);
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const rectUrl = URL.createObjectURL(blob);
 
         if (weatherOverlay) {
           map.removeLayer(weatherOverlay);
         }
 
-        const bounds = BOUNDS_MAP[currentArea];
-        weatherOverlay = L.imageOverlay(imageUrl, bounds, {
+        weatherOverlay = L.imageOverlay(rectUrl, bounds, {
           opacity: currentOpacity,
           zIndex: 20,
           className: currentBlendMode === 'multiply' ? 'blend-multiply' : 'blend-normal'
         }).addTo(map);
+      });
+    }
+
+    function fallbackRender(url) {
+      if (weatherOverlay) {
+        map.removeLayer(weatherOverlay);
       }
+      const boundsConfig = MERCATOR_BOUNDS[currentArea];
+      const bounds = [
+        [boundsConfig.latMin, boundsConfig.lonMin],
+        [boundsConfig.latMax, boundsConfig.lonMax]
+      ];
+      weatherOverlay = L.imageOverlay(url, bounds, {
+        opacity: currentOpacity,
+        zIndex: 20,
+        className: currentBlendMode === 'multiply' ? 'blend-multiply' : 'blend-normal'
+      }).addTo(map);
+    }
+
+    function setChartTypeMode(mode) {
+      if (currentChartMode === mode) return;
+      currentChartMode = mode;
+
+      const btnLive = document.getElementById('btn-mode-live');
+      const btnExpert = document.getElementById('btn-mode-expert');
+      const selectWrapper = document.getElementById('expert-select-container');
+
+      if (mode === 'live') {
+        btnLive.className = 'flex-1 py-1 rounded text-center text-xs font-medium bg-sky-500 text-slate-950 transition';
+        btnExpert.className = 'flex-1 py-1 rounded text-center text-xs font-medium text-slate-400 hover:text-slate-200 transition';
+        selectWrapper.classList.add('hidden');
+      } else {
+        btnExpert.className = 'flex-1 py-1 rounded text-center text-xs font-medium bg-sky-500 text-slate-950 transition';
+        btnLive.className = 'flex-1 py-1 rounded text-center text-xs font-medium text-slate-400 hover:text-slate-200 transition';
+        selectWrapper.classList.remove('hidden');
+      }
+
+      processWeatherChart();
+    }
+
+    function onExpertChartChange() {
+      processWeatherChart();
     }
 
     async function switchArea(area) {
@@ -276,7 +503,13 @@
       }
 
       await updateSatelliteLayer();
-      renderWeatherOverlay();
+      processWeatherChart();
+    }
+
+    function toggleRectify() {
+      isRectifyEnabled = !isRectifyEnabled;
+      document.getElementById('rectify-status-text').textContent = isRectifyEnabled ? '幾何補正: ON' : '幾何補正: OFF';
+      renderLayer();
     }
 
     function setupSlider() {
@@ -311,23 +544,6 @@
       }
     }
 
-    function toggleSatellite() {
-      isSatelliteVisible = !isSatelliteVisible;
-      const textEl = document.getElementById('sat-status-text');
-      
-      if (isSatelliteVisible) {
-        textEl.textContent = 'ひまわり赤外 ON';
-        if (himawariLayer && !map.hasLayer(himawariLayer)) {
-          map.addLayer(himawariLayer);
-        }
-      } else {
-        textEl.textContent = 'ひまわり赤外 OFF';
-        if (himawariLayer && map.hasLayer(himawariLayer)) {
-          map.removeLayer(himawariLayer);
-        }
-      }
-    }
-
     function resetMapView() {
       if (currentArea === 'near') {
         map.setView([36.0, 137.5], 5);
@@ -338,4 +554,3 @@
   </script>
 </body>
 </html>
-
