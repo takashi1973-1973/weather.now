@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>地上天気図 × ひまわり衛星 v2.0 (2026-09-23)</title>
+  <title>地上天気図 × ひまわり衛星 v2.1 (2026-09-24)</title>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -57,7 +57,7 @@
         <h1 class="text-sm font-bold tracking-wider text-slate-100">
           天気図 <span class="text-sky-400 text-xs font-normal">× ひまわり</span>
         </h1>
-        <span class="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">v2.0 (2026.09.23)</span>
+        <span class="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">v2.1 (2026.09.24)</span>
       </div>
     </div>
     
@@ -165,7 +165,7 @@
     let himawariLayer = null;
     let currentArea = 'near';       // 'near' or 'asia'
     let currentChartMode = 'live';  // 'live' or 'expert'
-    let currentSatBand = 'ir';      // 'ir' (赤外: B13/TBB) or 'color' (カラー: REP/ETC)
+    let currentSatBand = 'color';   // デフォルト: トゥルーカラー
     let isSatelliteVisible = true;
     let currentBlendMode = 'multiply';
     let currentOpacity = 0.85;
@@ -180,12 +180,12 @@
     };
 
     // 気象庁ポーラーステレオ投影パラメータ (phi0=60N, lam0=140E)
+    // u0: 北極のX比率, v0: 北極のY比率(負値=画像上端より上), scale: 拡大倍率
     const PROJ_PARAMS = {
-      near: { u0: 0.50, v0: -0.65, scale: 1.48 },
-      asia: { u0: 0.52, v0: -0.42, scale: 1.25 }
+      near: { u0: 0.50, v0: -1.05, scale: 1.62 },
+      asia: { u0: 0.52, v0: -0.75, scale: 1.15 }
     };
 
-    // 専門天気図URL定義
     const EXPERT_URLS = {
       AXFE578: "https://www.data.jma.go.jp/fcd/yoho/data/wxchart/expert/AXFE578.png",
       ASAS: "https://www.data.jma.go.jp/fcd/yoho/data/wxchart/expert/ASAS.png",
@@ -222,7 +222,7 @@
       processWeatherChart();
     }
 
-    // ひまわり衛星画像の更新（赤外 B13/TBB または トゥルーカラー REP/ETC）
+    // ひまわり衛星画像の更新
     async function updateSatelliteLayer() {
       const mode = currentArea === 'near' ? 'jp' : 'fd';
       const targetTimeUrl = `https://www.jma.go.jp/bosai/himawari/data/satimg/targetTimes_${mode}.json`;
@@ -239,7 +239,6 @@
             map.removeLayer(himawariLayer);
           }
 
-          // バンドパスの切り替え (赤外 or トゥルーカラー)
           const bandPath = currentSatBand === 'ir' ? 'B13/TBB' : 'REP/ETC';
 
           himawariLayer = L.tileLayer(
@@ -261,7 +260,6 @@
       }
     }
 
-    // 衛星バンド切り替え（赤外 ⇄ カラー）
     async function switchSatelliteBand(band) {
       if (currentSatBand === band) return;
       currentSatBand = band;
@@ -280,7 +278,6 @@
       await updateSatelliteLayer();
     }
 
-    // 衛星レイヤーの表示/非表示切り替え
     function toggleSatelliteVisibility() {
       isSatelliteVisible = !isSatelliteVisible;
       const btnEye = document.getElementById('btn-sat-eye');
@@ -297,7 +294,6 @@
       }
     }
 
-    // 実況リスト取得
     async function fetchWeatherChartList() {
       try {
         const jmaRes = await fetch('https://www.jma.go.jp/bosai/weather_map/data/list.json');
@@ -307,7 +303,6 @@
       }
     }
 
-    // 天気図画像のロード
     function processWeatherChart() {
       let imageUrl = '';
 
@@ -352,7 +347,7 @@
       img.src = imageUrl;
     }
 
-    // Canvasによる幾何補正（プランB：再投影）
+    // 幾何補正エンジン（逆マッピング修正版）
     function renderLayer() {
       if (!rawWeatherImg) return;
 
@@ -412,16 +407,18 @@
           const lam = lonDeg * Math.PI / 180;
           const dLam = lam - lam0;
 
+          // 極心平射図法: 南方向(+Y)へ正しく展開
           const xps = r * Math.sin(dLam);
-          const yps = -r * Math.cos(dLam);
+          const yps = r * Math.cos(dLam);
 
-          const u = Math.round(srcW * params.u0 + (srcW * params.scale * xps));
-          const v = Math.round(srcH * -params.v0 - (srcH * params.scale * yps));
+          // 北極 (u0, v0) からの実画像ピクセル座標への射影
+          const u = Math.round(srcW * params.u0 + srcW * params.scale * xps);
+          const v = Math.round(srcH * params.v0 + srcH * params.scale * yps);
 
           if (u >= 0 && u < srcW && v >= 0 && v < srcH) {
             dstPixels[y * dstW + x] = srcPixels[v * srcW + u];
           } else {
-            dstPixels[y * dstW + x] = 0;
+            dstPixels[y * dstW + x] = 0; // 枠外は完全透明
           }
         }
       }
@@ -554,3 +551,4 @@
   </script>
 </body>
 </html>
+
